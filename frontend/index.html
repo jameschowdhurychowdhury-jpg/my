@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Lantern Chat 🏮</title>
+  
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#b91c1c" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&family=ZCOOL+XiaoWei&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+
+  <!-- Password Login Overlay -->
+  <div id="auth-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-badge">🏮 秘密</div>
+      <h2>Welcome Back</h2>
+      <p class="modal-subtitle">Log in to your private chat</p>
+      
+      <div class="input-group">
+        <label for="login-username">Who are you?</label>
+        <select id="login-username" class="festive-select">
+          <option value="Ame">Ame (Dragon)</option>
+          <option value="G...F💕">G...F💕 (Bunny)</option>
+        </select>
+      </div>
+
+      <div class="input-group">
+        <label for="login-password">Password</label>
+        <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password" required />
+      </div>
+
+      <button id="auth-submit-btn" class="festive-btn">Enter Chamber 🌸</button>
+    </div>
+  </div>
+
+  <!-- Settings & Storage Modal -->
+  <div id="settings-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-badge">⚙️</div>
+      <h2>Vault Settings</h2>
+      <p class="modal-subtitle">Backblaze B2 & Admin Vault</p>
+      
+      <div class="storage-meter-box">
+        <div class="storage-labels">
+          <span>Used: <strong id="b2-used-mb">0.0 MB</strong></span>
+          <span>Free Cap: <strong>10 GB</strong></span>
+        </div>
+        <div class="progress-bar-bg">
+          <div id="b2-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+        </div>
+        <span id="b2-pct-text" class="storage-pct-label">0% used</span>
+      </div>
+
+      <!-- Admin Vault Section -->
+      <div class="admin-box">
+        <label for="admin-pass">Admin Password (View-Once Vault)</label>
+        <div class="admin-input-row">
+          <input type="password" id="admin-pass" placeholder="This is not to be filled up" />
+          <button id="admin-login-btn" class="festive-btn mini-btn">No</button>
+        </div>
+      </div>
+
+      <div id="admin-vault-container" style="display: none;">
+        <h3 class="vault-title">Protected View-Once Media</h3>
+        <div id="admin-media-list" class="vault-grid"></div>
+      </div>
+
+      <button id="close-settings-btn" class="festive-btn" style="margin-top: 1.5rem;">Close</button>
+    </div>
+  </div>
+
+  <!-- Media Viewer Modal -->
+  <div id="media-viewer-modal" class="modal-overlay" style="display: none;">
+    <div class="media-viewer-card">
+      <button id="close-viewer-btn" class="close-pill-btn">✕</button>
+      <div id="media-viewer-content"></div>
+    </div>
+  </div>
+
+  <!-- Main App Layout -->
+  <div class="app-container">
+
+    <aside class="desktop-sidebar">
+      <div class="sidebar-avatar user-me" title="Ame">
+        <div class="avatar-ring">
+          <img src="assets/stickers/dragon.svg" alt="Ame" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=Ame'" />
+        </div>
+        <span class="sidebar-label">Ame</span>
+      </div>
+
+      <div class="sidebar-avatar user-gf active" title="G...F💕">
+        <div class="avatar-ring">
+          <img src="assets/stickers/bunny.svg" alt="G...F💕" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=GF'" />
+        </div>
+        <span class="sidebar-label">G...F💕</span>
+      </div>
+
+      <div class="sidebar-bottom">
+        <button id="settings-btn" class="icon-btn" title="Settings">⚙️</button>
+      </div>
+    </aside>
+
+    <main class="chat-viewport">
+      <header class="chat-header">
+        <div class="header-left">
+          <button class="back-chevron" aria-label="Back">‹</button>
+          <div class="header-avatar-wrap">
+            <img id="partner-avatar" src="assets/stickers/bunny.svg" alt="Partner" onerror="this.src='https://api.dicebear.com/7.x/bottts/svg?seed=GF'" />
+            <span id="partner-status-dot" class="status-indicator offline"></span>
+          </div>
+          <div class="header-info">
+            <div class="partner-name-row">
+              <span id="partner-name">G...F💕</span>
+            </div>
+            <span id="header-status-text" class="status-subtitle">offline</span>
+          </div>
+        </div>
+
+        <div class="header-right">
+          <button id="mobile-settings-btn" class="icon-btn" title="Settings" style="margin-right: 0.5rem;">⚙️</button>
+          <div class="header-knot-tassel" title="Traditional Knot">🏮</div>
+        </div>
+      </header>
+
+      <section id="chat-messages" class="messages-container">
+        <div class="crypto-notice">
+          <span>🔒 Persistent end-to-end encrypted storage.</span>
+        </div>
+      </section>
+
+      <div id="typing-indicator" class="typing-pill hidden">
+        <span id="typing-text" class="typing-text">Partner is typing...</span>
+        <span class="dot-flashing"></span>
+      </div>
+
+      <div id="drag-drop-overlay" class="drag-overlay hidden">
+        <div class="drag-box">Drop file to attach 🌸</div>
+      </div>
+
+      <!-- WhatsApp-style Quoted Reply Preview Bar -->
+      <div id="reply-preview-bar" class="reply-preview-bar hidden">
+        <div class="reply-preview-content">
+          <span id="reply-preview-user" class="reply-preview-user">Replying to Partner</span>
+          <p id="reply-preview-snippet" class="reply-preview-snippet">Snippet...</p>
+        </div>
+        <button type="button" id="cancel-reply-btn" class="cancel-reply-btn">✕</button>
+      </div>
+
+      <!-- Composer Bar -->
+      <footer class="chat-input-bar">
+        <div class="plus-btn-container">
+          <button type="button" class="red-plus-btn" id="plus-menu-btn" title="Attach Media">+</button>
+          <div class="media-popup-menu hidden" id="media-popup">
+            <button type="button" class="menu-item" data-type="photo">📷 Photo</button>
+            <button type="button" class="menu-item" data-type="video">🎥 Video</button>
+            <button type="button" class="menu-item" data-type="audio">🎵 Audio</button>
+          </div>
+        </div>
+
+        <input type="file" id="file-photo" accept="image/*" style="display: none;" />
+        <input type="file" id="file-video" accept="video/*" style="display: none;" />
+        <input type="file" id="file-audio" accept="audio/*" style="display: none;" />
+
+        <form id="chat-form" class="message-composer">
+          <div class="input-bubble-wrapper" id="drop-zone">
+            <!-- Staged File Preview Chip -->
+            <div id="pending-attachment-chip" class="pending-chip hidden">
+              <img id="pending-thumb" class="pending-thumb hidden" alt="preview" />
+              <span id="pending-filename" class="pending-filename">file.png</span>
+              <button type="button" id="clear-pending-btn" class="clear-pending-btn" title="Remove">✕</button>
+            </div>
+
+            <input 
+              type="text" 
+              id="message-input" 
+              placeholder="Type your message or drag & drop items..." 
+              autocomplete="off" 
+            />
+            <button type="button" id="onetime-toggle-btn" class="onetime-circle-btn" title="Toggle View Once">
+              <span class="circle-one">①</span>
+            </button>
+            <button type="button" id="emoji-picker-btn" class="inner-icon-btn" title="Add Emoji">🐼</button>
+          </div>
+
+          <button type="submit" id="send-btn" class="send-action-btn red-arrow-btn" title="Send">
+            <svg class="send-arrow-svg" viewBox="0 0 24 24" width="20" height="20">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="#ffffff" />
+            </svg>
+          </button>
+        </form>
+      </footer>
+    </main>
+  </div>
+
+  <audio id="sound-send" src="assets/sounds/send.mp3" preload="auto"></audio>
+  <audio id="sound-receive" src="assets/sounds/receive.mp3" preload="auto"></audio>
+
+  <script src="js/socket.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

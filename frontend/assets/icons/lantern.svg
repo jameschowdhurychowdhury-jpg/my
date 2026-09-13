@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Top hanger cord -->
+  <line x1="32" y1="2" x2="32" y2="10" stroke="#f8c858" stroke-width="2.5" stroke-linecap="round"/>
+  <!-- Top gold cap -->
+  <path d="M22 10h20v4H22z" fill="#f8c858" rx="2"/>
+  <!-- Red lantern body -->
+  <ellipse cx="32" cy="32" rx="22" ry="20" fill="#d92525"/>
+  <!-- Lantern ribs / highlights -->
+  <ellipse cx="32" cy="32" rx="14" ry="20" fill="none" stroke="#f8c858" stroke-width="1.5" opacity="0.6"/>
+  <line x1="32" y1="12" x2="32" y2="52" stroke="#f8c858" stroke-width="1.5" opacity="0.6"/>
+  <!-- Bottom gold cap -->
+  <path d="M24 50h16v4H24z" fill="#f8c858" rx="2"/>
+  <!-- Traditional tassel cord & fringe -->
+  <line x1="32" y1="54" x2="32" y2="58" stroke="#f8c858" stroke-width="2"/>
+  <path d="M28 58h8l2 6H26z" fill="#d92525"/>
+  <line x1="28" y1="64" x2="28" y2="62" stroke="#f8c858" stroke-width="1.5"/>
+  <line x1="32" y1="64" x2="32" y2="62" stroke="#f8c858" stroke-width="1.5"/>
+  <line x1="36" y1="64" x2="36" y2="62" stroke="#f8c858" stroke-width="1.5"/>
+</svg>
