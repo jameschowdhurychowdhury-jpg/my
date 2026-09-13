@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import json
+import threading
 from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.utils import secure_filename
@@ -73,6 +74,10 @@ def backup_db_to_b2():
         except Exception as e:
             print(f"[B2 Backup Error] {e}")
 
+def async_backup():
+    """Runs cloud upload in a background thread so messages arrive instantly without waiting."""
+    threading.Thread(target=backup_db_to_b2, daemon=True).start()
+
 sync_db_from_b2()
 
 def init_db():
@@ -133,7 +138,6 @@ def after_request(response):
 def index():
     return send_from_directory(frontend_dir, "index.html")
 
-# Proxy route: Serves local files or securely streams directly from the Private B2 Bucket
 @app.route("/uploads/<filename>")
 def serve_upload(filename):
     local_path = os.path.join(UPLOAD_FOLDER, filename)
@@ -246,7 +250,7 @@ def admin_delete():
         conn.commit()
         conn.close()
 
-        backup_db_to_b2()
+        async_backup()
         socketio.emit("message_deleted", {"id": msg_id}, room=PRIVATE_ROOM)
         return jsonify({"success": True}), 200
     except Exception as e:
@@ -265,22 +269,22 @@ def upload_file():
     local_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(local_path)
 
-    # All media routes through /uploads/ which streams from private B2 securely
     media_url = f"/uploads/{filename}"
 
-    s3 = get_b2_client()
-    bucket = getattr(Config, "B2_BUCKET_NAME", "")
+    def upload_worker(path, fname, mime):
+        s3 = get_b2_client()
+        bucket = getattr(Config, "B2_BUCKET_NAME", "")
+        if s3 and bucket and bucket != "your-chat-bucket":
+            try:
+                s3.upload_file(path, bucket, fname, ExtraArgs={"ContentType": mime})
+            except Exception as e:
+                print(f"[B2 Upload Warning] {e}")
 
-    if s3 and bucket and bucket != "your-chat-bucket":
-        try:
-            s3.upload_file(
-                local_path,
-                bucket,
-                filename,
-                ExtraArgs={"ContentType": file.content_type or "application/octet-stream"}
-            )
-        except Exception as e:
-            print(f"[B2 Upload Warning] {e}")
+    threading.Thread(
+        target=upload_worker,
+        args=(local_path, filename, file.content_type or "application/octet-stream"),
+        daemon=True
+    ).start()
 
     return jsonify({"url": media_url}), 200
 
@@ -392,6 +396,7 @@ def handle_message(payload):
     reply_to_id = str(payload.get("reply_to_id", ""))
     reply_to_text = str(payload.get("reply_to_text", ""))
 
+    # 1. Immediate local DB write (< 1ms)
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
@@ -403,12 +408,15 @@ def handle_message(payload):
         """, (msg_id, sender, text, timestamp, msg_type, media_url, caption, is_view_once, reply_to_id, reply_to_text))
         conn.commit()
         conn.close()
-        backup_db_to_b2()
     except Exception as e:
         print(f"[DB Error] {e}")
 
+    # 2. Transmit to partner instantly
     payload["sender"] = sender
     emit("receive_encrypted_message", payload, room=PRIVATE_ROOM, include_self=False)
+
+    # 3. Asynchronously push to B2 in background
+    async_backup()
 
 @socketio.on("edit_message")
 def handle_edit(data):
@@ -432,8 +440,8 @@ def handle_edit(data):
         conn.close()
 
         if affected > 0:
-            backup_db_to_b2()
             emit("message_edited", {"id": msg_id, "text": new_text}, room=PRIVATE_ROOM)
+            async_backup()
     except Exception as e:
         print(f"[Edit Error] {e}")
 
@@ -448,8 +456,8 @@ def handle_highlight(data):
         c.execute("UPDATE messages SET is_highlighted = ? WHERE id = ?", (is_highlighted, msg_id))
         conn.commit()
         conn.close()
-        backup_db_to_b2()
         emit("message_highlighted", {"id": msg_id, "is_highlighted": bool(is_highlighted)}, room=PRIVATE_ROOM)
+        async_backup()
     except Exception as e:
         print(f"[Highlight Error] {e}")
 
@@ -461,8 +469,8 @@ def handle_view_once_opened(data):
     c.execute("UPDATE messages SET viewed = 1 WHERE id = ?", (msg_id,))
     conn.commit()
     conn.close()
-    backup_db_to_b2()
     emit("view_once_consumed", {"id": msg_id}, room=PRIVATE_ROOM)
+    async_backup()
 
 @socketio.on("delete_message")
 def handle_delete(data):
@@ -489,14 +497,14 @@ def handle_delete(data):
             except Exception:
                 pass
 
-    c.execute("DELETE FROM messages WHERE id = ? AND sender = ?", (msg_id, sender))
+    c.execute("DELETE FROM messages WHERE id = ?", (msg_id,))
     affected = c.rowcount
     conn.commit()
     conn.close()
 
     if affected > 0:
-        backup_db_to_b2()
         emit("message_deleted", {"id": msg_id}, room=PRIVATE_ROOM)
+        async_backup()
 
 @socketio.on("typing")
 def handle_typing(data):

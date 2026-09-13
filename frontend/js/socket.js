@@ -6,14 +6,15 @@ const SocketClient = {
       this.socket.disconnect();
     }
 
+    // Force websocket transport first to eliminate 5-second polling delay
     this.socket = io({
       query: { user: username },
-      transports: ["polling", "websocket"],
+      transports: ["websocket", "polling"],
       upgrade: true,
       reconnection: true,
-      reconnectionAttempts: 10,
-      reconnectionDelay: 1000,
-      timeout: 20000
+      reconnectionAttempts: 25,
+      reconnectionDelay: 500,
+      timeout: 10000
     });
 
     this.socket.on("receive_encrypted_message", (data) => callbacks.onMessageReceived?.(data));
