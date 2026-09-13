@@ -1,7 +1,7 @@
 import os
 import sqlite3
 import json
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit, join_room
 from werkzeug.utils import secure_filename
 from config import Config
@@ -133,9 +133,25 @@ def after_request(response):
 def index():
     return send_from_directory(frontend_dir, "index.html")
 
+# Proxy route: Serves local files or securely streams directly from the Private B2 Bucket
 @app.route("/uploads/<filename>")
 def serve_upload(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
+    local_path = os.path.join(UPLOAD_FOLDER, filename)
+    if os.path.exists(local_path):
+        return send_from_directory(UPLOAD_FOLDER, filename)
+
+    s3 = get_b2_client()
+    bucket = getattr(Config, "B2_BUCKET_NAME", "")
+    if s3 and bucket:
+        try:
+            file_obj = s3.get_object(Bucket=bucket, Key=filename)
+            content_type = file_obj.get("ContentType", "application/octet-stream")
+            return Response(file_obj["Body"].read(), mimetype=content_type)
+        except Exception as e:
+            print(f"[B2 Stream Error] {e}")
+            return "File not found", 404
+
+    return "File not found", 404
 
 @app.route("/api/login", methods=["POST", "OPTIONS"])
 def login():
@@ -249,11 +265,11 @@ def upload_file():
     local_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(local_path)
 
+    # All media routes through /uploads/ which streams from private B2 securely
     media_url = f"/uploads/{filename}"
 
     s3 = get_b2_client()
     bucket = getattr(Config, "B2_BUCKET_NAME", "")
-    endpoint = getattr(Config, "B2_ENDPOINT_URL", "")
 
     if s3 and bucket and bucket != "your-chat-bucket":
         try:
@@ -263,8 +279,6 @@ def upload_file():
                 filename,
                 ExtraArgs={"ContentType": file.content_type or "application/octet-stream"}
             )
-            clean_endpoint = endpoint.rstrip("/")
-            media_url = f"{clean_endpoint}/{bucket}/{filename}"
         except Exception as e:
             print(f"[B2 Upload Warning] {e}")
 
